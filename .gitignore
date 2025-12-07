@@ -8,4 +8,23 @@ wheels/
 
 # Virtual environments
 .venv
+venv/
+env/
+
+# Environment variables
+.env
+
+# Generated feature files
+src/output/*.feature
+!src/output/.gitkeep
+
+# Playwright
+.pytest_cache/
+playwright/.ms-playwright/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 .env

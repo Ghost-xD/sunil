@@ -1,309 +1,245 @@
-# 🤖 AI-Based Autonomous Gherkin Test Generator
+# 🤖 AI-Based Gherkin Test Generator
 
-An LLM-driven autonomous testing system that analyzes webpage HTML, identifies hoverable and popup-triggering elements, executes actions through Playwright, and generates BDD Gherkin scenarios.
+LLM-powered REST API that converts plain-text test steps into BDD Gherkin scenarios or auto-generates them from webpage analysis.
 
-## 🌟 Features
+## 🚀 Quick Start
 
-- **LLM-Powered Intelligence**: Uses OpenAI GPT-4 to analyze HTML and identify interactive elements
-- **Autonomous Test Execution**: Playwright performs hover and click actions based on LLM analysis
-- **No Heuristics**: Pure LLM reasoning without DOM trees, visual models, or CSS diffing
-- **BDD Scenario Generation**: Automatically generates two Gherkin scenarios:
-  - Hover-interaction validation (dropdowns, tooltips, navigation)
-  - Popup/modal validation (dialogs, modals, overlays)
-
-## 📋 Requirements
-
-- Python 3.12 or higher
-- OpenAI API key
-- Modern web browser (Chromium will be installed by Playwright)
-
-## 🚀 Installation
-
-### 1. Clone or download this repository
-
-```bash
-cd ai-gherkin-generator
-```
-
-### 2. Install Python dependencies
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 3. Install Playwright browsers
-
-```bash
 playwright install chromium
 ```
 
-### 4. Set up environment variables
+### 2. Configure Environment
 
-Create a `.env` file in the project root:
-
-```bash
-OPENAI_API_KEY=your-openai-api-key-here
-```
-
-## 💻 Usage
-
-### Basic Usage - Automatic Mode
-
-The system can automatically analyze a webpage and generate test scenarios:
+Create `.env` file:
 
 ```bash
-python src/main.py --url https://www.tivdak.com/patient-stories/
+OPENAI_API_KEY=your-api-key-here
+OPENAI_MODEL=gpt-4.1
 ```
 
-### Custom Test Mode
-
-You can provide your own test steps in plain text, and the LLM will convert them to proper Gherkin format:
-
-**Using a text file:**
+### 3. Start API Server
 
 ```bash
-python src/main.py --url https://www.tivdak.com/patient-stories/ --custom-test custom_test.txt
+python src/api.py
 ```
 
-**Example custom test file (custom_test.txt):**
+Server runs at: **http://localhost:8000**
+
+Interactive docs: **http://localhost:8000/docs**
+
+## 📡 API Endpoints
+
+### 1. Convert Custom Test Steps to Gherkin
+
+**POST** `/api/generate/custom`
+
+```bash
+curl -X POST http://localhost:8000/api/generate/custom \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.tivdak.com/patient-
+stories/",
+    "test_steps": "1. Click Learn More button\n2. Verify popup appears\n3. Click Cancel",
+    "model": "gpt-4.1"
+  }'
+```
+
+**Python:**
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/generate/custom",
+    json={
+        "url": "https://www.tivdak.com/patient-
+stories/",
+        "test_steps": """
+Test 1: Validate popup
+
+1. Click the Learn More button
+2. A popup appears with title "Leaving site"
+3. Click Cancel button
+4. Popup closes
+        """,
+        "model": "gpt-4.1"
+    }
+)
+
+result = response.json()
+print(result['gherkin_content'])
+print(f"Saved to: {result['output_file']}")
+```
+
+### 2. Upload Custom Test File
+
+**POST** `/api/generate/custom/file`
+
+```bash
+curl -X POST http://localhost:8000/api/generate/custom/file \
+  -F "url=https://www.tivdak.com/patient-
+stories/" \
+  -F "test_file=@custom_test.txt" \
+  -F "model=gpt-4.1"
+```
+
+### 3. Auto-Generate from Webpage Analysis
+
+**POST** `/api/generate/auto`
+
+```bash
+curl -X POST http://localhost:8000/api/generate/auto \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.tivdak.com/patient-
+stories/",
+    "headless": true,
+    "model": "gpt-4.1"
+  }'
+```
+
+### 4. List Generated Files
+
+**GET** `/api/files`
+
+```bash
+curl http://localhost:8000/api/files
+```
+
+### 5. Download Generated File
+
+**GET** `/api/download/{filename}`
+
+```bash
+curl http://localhost:8000/api/download/custom_generated_20251207_123456.feature -o test.feature
+```
+
+## 📝 Custom Test Format
+
+Create a `custom_test.txt` file:
 
 ```
-Test 1: Validate "Learn More" pop-up functionality
+Test 1: Validate "Learn More" popup
 
-1. Goto the url https://www.tivdak.com/patient-stories/
-2. Click the button called "Learn More"
-3. A pop up will appear with the title saying "You are now leaving tivdak.com"
-4. Click the cancel button
-5. Click the button called "Learn More"
-6. A pop up will appear with the title saying "You are now leaving tivdak.com"
-7. Click the continue button
-8. Verify the url has changed to "https://alishasjourney.com/"
+1. Go to https://www.tivdak.com/patient-
+stories//page
+2. Click the "Learn More" button
+3. A popup appears with title "You are now leaving"
+4. Click the "Cancel" button
+5. Verify popup closes
+6. Click the "Learn More" button again
+7. Click the "Continue" button
+8. Verify URL changed to "https://destination.com"
 ```
 
-The LLM will convert this into proper Gherkin:
+LLM converts this to proper Gherkin:
 
 ```gherkin
-Feature: Validate "Learn More" pop-up functionality
+Feature: Validate "Learn More" popup functionality
 
-  Scenario: Verify the cancel button in the "You are now leaving tivdak.com" pop-up
-    Given the user is on the "https://www.tivdak.com/patient-stories/" page
+  Scenario: Verify cancel button closes popup
+    Given the user is on "https://www.tivdak.com/patient-
+stories//page"
     When the user clicks the "Learn More" button
-    Then a pop-up should appear with the title "You are now leaving tivdak.com"
-    And the user clicks the "Cancel" button
-    Then the pop-up should close
+    Then a popup should appear with title "You are now leaving"
+    When the user clicks the "Cancel" button
+    Then the popup should close
 
-  Scenario: Verify the continue button in the pop-up redirects correctly
-    Given the user is on the "https://www.tivdak.com/patient-stories/" page
+  Scenario: Verify continue button redirects correctly
+    Given the user is on "https://www.tivdak.com/patient-
+stories//page"
     When the user clicks the "Learn More" button
-    Then a pop-up should appear with the title "You are now leaving tivdak.com"
-    And the user clicks the "Continue" button
-    Then the page URL should change to "https://alishasjourney.com/"
+    Then a popup should appear with title "You are now leaving"
+    When the user clicks the "Continue" button
+    Then the URL should change to "https://destination.com"
 ```
 
-### Advanced Options
-
-```bash
-# Run with visible browser (non-headless)
-python src/main.py --url https://www.tivdak.com/patient-stories/ --headless false
-
-# Use specific OpenAI model
-python src/main.py --url https://www.tivdak.com/patient-stories/ --model gpt-4
-
-# Custom output file
-python src/main.py --url https://www.tivdak.com/patient-stories/ --output tests/my_scenarios.feature
-```
-
-### Command Line Arguments
-
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `--url` | Yes | - | URL of the webpage to analyze |
-| `--headless` | No | `true` | Run browser in headless mode (`true`/`false`) |
-| `--model` | No | `gpt-4-turbo-preview` | OpenAI model to use (e.g., `gpt-4o`, `gpt-4`) |
-| `--output` | No | `src/output/generated.feature` | Output file path |
-| `--custom-test` | No | - | Path to custom test steps file (use `-` for stdin) |
-| `--mode` | No | `auto` | Mode: `auto` for automatic analysis, `custom` for custom test conversion |
-
-## 🔄 How It Works
-
-### End-to-End Workflow
+## 🏗️ Project Structure
 
 ```
-1. HTML Extraction
-   ├─ Playwright loads webpage
-   └─ BeautifulSoup parses HTML
-
-2. LLM Analysis
-   ├─ Identifies hover candidates (dropdowns, tooltips)
-   ├─ Identifies popup candidates (modals, dialogs)
-   └─ Generates action plan
-
-3. Playwright Execution
-   ├─ Executes hover actions
-   ├─ Executes click actions
-   └─ Captures results (visible elements, popups, URL changes)
-
-4. LLM Interpretation
-   ├─ Analyzes execution results
-   └─ Identifies test-worthy interactions
-
-5. Gherkin Generation
-   ├─ Generates Scenario 1: Hover interactions
-   └─ Generates Scenario 2: Popup/modal validation
-
-6. File Output
-   └─ Writes generated.feature file
-```
-
-### Architecture Principles
-
-- **LLM performs all inference**: Element identification, selector creation, scenario logic
-- **Playwright only executes**: Actions and result reporting (no interpretation)
-- **BeautifulSoup only parses**: HTML extraction (no DOM tree building)
-- **No heuristics**: Pure LLM reasoning, no computer vision, no CSS diffing
-- **Fail-fast error handling**: Clear error messages with immediate failure
-
-## 📁 Project Structure
-
-```
-ai-gherkin-generator/
-│
 ├── src/
-│   ├── main.py                 # Entry point with CLI
-│   ├── llm_agent.py           # LLM intelligence core
-│   ├── playwright_agent.py    # Action executor
-│   ├── html_parser.py         # HTML extraction
-│   ├── scenario_builder.py    # File writer
-│   └── output/
-│       └── generated.feature  # Generated scenarios
-│
-├── requirements.txt           # Python dependencies
-├── .env                      # Environment variables (create this)
-└── README.md                # This file
+│   ├── api.py                # FastAPI server (START HERE)
+│   ├── llm_agent.py          # LLM intelligence
+│   ├── playwright_agent.py   # Browser automation
+│   ├── html_parser.py        # HTML extraction
+│   ├── scenario_builder.py   # File writer
+│   └── output/               # Generated .feature files
+├── examples/
+│   └── api_examples.py       # Usage examples
+├── .env                      # API keys (create this)
+├── requirements.txt          # Dependencies
+└── README.md                 # This file
 ```
 
-## 📝 Example Output
-
-The system generates a `.feature` file with two scenarios:
-
-```gherkin
-# Auto-generated Gherkin scenarios
-# Generated: 2025-12-07 10:30:00
-
-Feature: Website Interactive Elements Testing
-
-  Scenario: Validate hover-based dropdown navigation
-    Given I am on the homepage "https://www.tivdak.com/patient-stories/"
-    When I hover over the element "nav .menu-item"
-    Then I should see a dropdown menu appear
-    And the dropdown should contain navigation links
-
-  Scenario: Validate popup modal behavior
-    Given I am on the homepage "https://www.tivdak.com/patient-stories/"
-    When I click on the element "button[data-toggle='modal']"
-    Then a modal popup should appear
-    And the modal should have a title "Welcome"
-    And the modal should contain a "Close" button
-```
-
-## ⚙️ Configuration
-
-### Environment Variables
+## 🔑 Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Yes | Your OpenAI API key |
+| `OPENAI_MODEL` | No | Model to use (default: gpt-4-turbo-preview) |
 
-### Supported OpenAI Models
+## 🎯 Features
 
-- `gpt-4-turbo-preview` (default, recommended)
+- **Custom Test Conversion**: Plain text → Gherkin scenarios
+- **Auto-Generation**: Analyze webpage → Generate hover/popup tests
+- **REST API**: FastAPI with Swagger docs
+- **File Upload**: Support for `.txt` test files
+- **Download**: Get generated `.feature` files
+
+## 📚 API Response Format
+
+```json
+{
+  "success": true,
+  "message": "Gherkin scenarios generated successfully",
+  "gherkin_content": "Feature: ...\n  Scenario: ...",
+  "output_file": "custom_generated_20251207_123456.feature",
+  "timestamp": "2025-12-07T12:34:56",
+  "metadata": {
+    "url": "https://www.tivdak.com/patient-
+stories/",
+    "mode": "custom",
+    "model": "gpt-4.1"
+  }
+}
+```
+
+## 🛠️ Supported Models
+
+- `gpt-4.1` (GPT-4.1, recommended)
+- `gpt-4-turbo-preview` (GPT-4 Turbo)
 - `gpt-4`
-- `gpt-3.5-turbo` (faster, less accurate)
+- `gpt-3.5-turbo`
 
-## 🐛 Troubleshooting
+## 📖 More Examples
 
-### "OPENAI_API_KEY environment variable not set"
+See `examples/api_examples.py` for complete Python examples including:
+- Health checks
+- Auto-generation
+- Custom test conversion
+- File uploads
+- Listing and downloading files
 
-Make sure you've set your API key as described in the Installation section.
+Run examples:
+```bash
+python examples/api_examples.py
+```
 
-### "Failed to extract HTML from URL"
+## 🔧 Troubleshooting
 
-- Check that the URL is valid and accessible
-- Verify your internet connection
-- Some websites may block automated browsers
+**"OPENAI_API_KEY not set"**
+- Create `.env` file with your API key
 
-### "Selector not found or not visible"
+**"Failed to extract HTML"**
+- Check URL is accessible
+- Some sites block automation
 
-The LLM may have identified elements that don't exist or aren't visible. This is normal for complex pages. The system will continue and note the error.
-
-### "LLM returned invalid JSON"
-
-Occasionally the LLM may return malformed JSON. Try running again or use a different model (GPT-4 is more reliable than GPT-3.5).
-
-## 🔍 Testing Edge Cases
-
-The system handles various scenarios:
-
-- **No interactive elements found**: Generates example scenarios based on HTML structure
-- **Action failures**: Logs errors and continues with remaining actions
-- **Popup doesn't appear**: Notes in interpretation and adjusts scenarios
-- **URL changes**: Captures navigation events in results
-
-## 📊 Output Files
-
-Generated `.feature` files include:
-
-- Auto-generation timestamp
-- Feature description
-- Two complete Gherkin scenarios
-- Given-When-Then structure
-- Specific selectors and assertions
-
-## 🤝 Contributing
-
-This is an autonomous testing system. To extend functionality:
-
-1. **Add new action types**: Modify `playwright_agent.py`
-2. **Change LLM prompts**: Edit `llm_agent.py`
-3. **Custom output formats**: Extend `scenario_builder.py`
-4. **Additional validation**: Enhance `playwright_agent.py` capture methods
-
-## 📄 License
-
-This project is open source and available for use and modification.
-
-## 🎯 Key Design Decisions
-
-### Why LLM-Only Intelligence?
-
-- **Flexibility**: Adapts to any webpage structure
-- **No maintenance**: No hardcoded rules to update
-- **Natural understanding**: Reasons about UI like a human tester
-
-### Why Playwright?
-
-- **Reliable**: Industry-standard browser automation
-- **Cross-browser**: Supports Chromium, Firefox, WebKit
-- **Modern**: Built for modern web applications
-
-### Why Gherkin?
-
-- **BDD standard**: Widely adopted in testing
-- **Human-readable**: Non-technical stakeholders can understand
-- **Tool support**: Works with Cucumber, Behave, etc.
-
-## 📞 Support
-
-For issues or questions:
-
-1. Check the Troubleshooting section
-2. Review the generated scenarios for insights
-3. Verify your environment setup
-4. Check OpenAI API status
+**Connection errors**
+- Make sure API server is running: `python src/api.py`
+- Check http://localhost:8000/health
 
 ---
 
-**Built with**: Python, Playwright, OpenAI GPT-4, BeautifulSoup
-
-**Version**: 0.1.0
-
+**Built with**: Python • FastAPI • OpenAI GPT-4 • Playwright • BeautifulSoup
