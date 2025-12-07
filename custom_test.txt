@@ -1,0 +1,18 @@
+Test 1: Validate "Learn More" pop-up functionality
+
+1. Goto the url https://www.tivdak.com/patient-stories/
+
+2. Click the button called "Learn More"
+
+3. A pop up will appear with the title saying "You are now leaving tivdak.com"
+
+4. Click the cancel button
+
+5. Click the button called "Learn More"
+
+6. A pop up will appear with the title saying "You are now leaving tivdak.com"
+
+7. Click the continue button
+
+8. Verify the url has changed to "https://alishasjourney.com/"
+
