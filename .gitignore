@@ -18,6 +18,9 @@ env/
 src/output/*.feature
 !src/output/.gitkeep
 
+# Cache database
+src/.cache/
+
 # Playwright
 .pytest_cache/
 playwright/.ms-playwright/

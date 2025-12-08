@@ -3,9 +3,9 @@ Playwright Agent Module
 Executes action plans and captures results without interpretation.
 """
 
-from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from typing import List, Dict, Any
-import time
+import asyncio
 
 
 class PlaywrightAgent:
@@ -24,27 +24,27 @@ class PlaywrightAgent:
         self.context = None
         self.page = None
     
-    def start_browser(self, url: str):
+    async def start_browser(self, url: str):
         """Start browser and navigate to URL."""
-        self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(headless=self.headless)
-        self.context = self.browser.new_context()
-        self.page = self.context.new_page()
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(headless=self.headless)
+        self.context = await self.browser.new_context()
+        self.page = await self.context.new_page()
         
         print(f"Navigating to: {url}")
-        self.page.goto(url, wait_until="domcontentloaded")
-        self.page.wait_for_timeout(2000)  # Wait for initial load
+        await self.page.goto(url, wait_until="domcontentloaded")
+        await self.page.wait_for_timeout(2000)  # Wait for initial load
     
-    def close_browser(self):
+    async def close_browser(self):
         """Close browser and cleanup."""
         if self.context:
-            self.context.close()
+            await self.context.close()
         if self.browser:
-            self.browser.close()
+            await self.browser.close()
         if self.playwright:
-            self.playwright.stop()
+            await self.playwright.stop()
     
-    def execute_action_plan(self, url: str, action_plan: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def execute_action_plan(self, url: str, action_plan: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Execute a list of actions from the LLM.
         
@@ -72,7 +72,7 @@ class PlaywrightAgent:
         }
         
         try:
-            self.start_browser(url)
+            await self.start_browser(url)
             
             for action_item in action_plan:
                 action = action_item.get("action")
@@ -91,14 +91,14 @@ class PlaywrightAgent:
                 
                 try:
                     if action == "hover":
-                        result = self._execute_hover(selector)
+                        result = await self._execute_hover(selector)
                         action_result["success"] = result["success"]
                         action_result["details"] = result
                         if result["success"]:
                             results["hover_results"].append(result)
                     
                     elif action == "click":
-                        result = self._execute_click(selector)
+                        result = await self._execute_click(selector)
                         action_result["success"] = result["success"]
                         action_result["details"] = result
                         if result.get("popup_detected"):
@@ -123,11 +123,11 @@ class PlaywrightAgent:
             print(f"Fatal error: {str(e)}")
         
         finally:
-            self.close_browser()
+            await self.close_browser()
         
         return results
     
-    def _execute_hover(self, selector: str) -> Dict[str, Any]:
+    async def _execute_hover(self, selector: str) -> Dict[str, Any]:
         """
         Execute hover action and capture what appears.
         
@@ -148,19 +148,18 @@ class PlaywrightAgent:
         
         try:
             # Get visible elements count before hover
-            visible_before = self.page.locator("*:visible").count()
+            visible_before = await self.page.locator("*:visible").count()
             result["element_count_before"] = visible_before
             
-            # Wait for element and hover
-            element = self.page.locator(selector).first
-            element.wait_for(state="visible", timeout=5000)
-            element.hover()
+            # Wait for element and hover with retry
+            element = await self._wait_for_element_with_retry(selector, timeout=10000)
+            await element.hover()
             
             # Wait for any animations
-            self.page.wait_for_timeout(1000)
+            await self.page.wait_for_timeout(1000)
             
             # Get visible elements count after hover
-            visible_after = self.page.locator("*:visible").count()
+            visible_after = await self.page.locator("*:visible").count()
             result["element_count_after"] = visible_after
             
             # Try to capture newly visible elements (dropdowns, tooltips, etc.)
@@ -178,15 +177,15 @@ class PlaywrightAgent:
             for dd_selector in dropdown_selectors:
                 try:
                     elements = self.page.locator(dd_selector)
-                    count = elements.count()
+                    count = await elements.count()
                     if count > 0:
                         for i in range(min(count, 5)):  # Limit to 5 elements
                             elem = elements.nth(i)
-                            if elem.is_visible():
-                                text = elem.inner_text()[:200]  # Limit text length
+                            if await elem.is_visible():
+                                text = await elem.inner_text()
                                 result["newly_visible_elements"].append({
                                     "selector": dd_selector,
-                                    "text": text
+                                    "text": text[:200]
                                 })
                 except:
                     pass
@@ -203,7 +202,27 @@ class PlaywrightAgent:
         
         return result
     
-    def _execute_click(self, selector: str) -> Dict[str, Any]:
+    async def _wait_for_element_with_retry(self, selector: str, timeout: int = 10000):
+        """Try multiple strategies to find an element."""
+        strategies = [
+            selector,  # Original selector
+            f"visible=true >> {selector}",  # Only visible elements
+        ]
+        
+        for strategy in strategies:
+            try:
+                element = self.page.locator(strategy).first
+                await element.wait_for(state="visible", timeout=timeout // len(strategies))
+                return element
+            except:
+                continue
+        
+        # If all strategies fail, try the original one last time with full timeout
+        element = self.page.locator(selector).first
+        await element.wait_for(state="visible", timeout=timeout)
+        return element
+    
+    async def _execute_click(self, selector: str) -> Dict[str, Any]:
         """
         Execute click action and detect popups/modals.
         
@@ -228,13 +247,12 @@ class PlaywrightAgent:
             # Capture URL before click
             result["url_before"] = self.page.url
             
-            # Wait for element and click
-            element = self.page.locator(selector).first
-            element.wait_for(state="visible", timeout=5000)
-            element.click()
+            # Wait for element and click with retry
+            element = await self._wait_for_element_with_retry(selector, timeout=10000)
+            await element.click()
             
-            # Wait for potential popup/navigation
-            self.page.wait_for_timeout(1500)
+            # Wait longer for popup/modal to appear and stabilize
+            await self.page.wait_for_timeout(2500)
             
             # Capture URL after click
             result["url_after"] = self.page.url
@@ -243,57 +261,102 @@ class PlaywrightAgent:
             # Check for common popup/modal patterns
             modal_selectors = [
                 "[role='dialog']",
-                ".modal:visible",
-                ".popup:visible",
                 "[aria-modal='true']",
+                ".modal",
+                ".popup",
                 ".modal.show",
-                ".modal-dialog"
+                ".modal-dialog",
+                "[class*='modal']",
+                "[class*='popup']",
+                "[class*='dialog']",
+                "div[style*='display: block']"
             ]
             
             popup_found = False
             for modal_selector in modal_selectors:
                 try:
+                    # Wait a bit for modal to fully render
+                    await self.page.wait_for_timeout(500)
+                    
                     modal = self.page.locator(modal_selector).first
-                    if modal.is_visible():
+                    if await modal.is_visible():
                         popup_found = True
                         result["popup_detected"] = True
                         
                         # Extract popup details
                         result["popup_details"]["selector"] = modal_selector
                         
-                        # Try to get title
+                        # Try to get title - look in the modal context
                         try:
                             title_selectors = [
                                 f"{modal_selector} h1",
                                 f"{modal_selector} h2",
+                                f"{modal_selector} h3",
                                 f"{modal_selector} .modal-title",
-                                f"{modal_selector} [role='heading']"
+                                f"{modal_selector} .popup-title",
+                                f"{modal_selector} [role='heading']",
+                                f"{modal_selector} .title",
+                                f"{modal_selector} strong:first-of-type"
                             ]
                             for title_sel in title_selectors:
-                                title_elem = self.page.locator(title_sel).first
-                                if title_elem.is_visible():
-                                    result["popup_details"]["title"] = title_elem.inner_text()
+                                try:
+                                    title_elem = self.page.locator(title_sel).first
+                                    await title_elem.wait_for(state="visible", timeout=1000)
+                                    result["popup_details"]["title"] = await title_elem.inner_text()
                                     break
+                                except:
+                                    continue
                         except:
                             pass
                         
-                        # Try to get buttons
+                        # Try to get ALL buttons and links in the popup
                         try:
-                            buttons = self.page.locator(f"{modal_selector} button")
-                            button_count = buttons.count()
-                            button_texts = []
-                            for i in range(min(button_count, 5)):  # Limit to 5 buttons
-                                btn = buttons.nth(i)
-                                if btn.is_visible():
-                                    button_texts.append(btn.inner_text())
-                            result["popup_details"]["buttons"] = button_texts
+                            # Look for buttons, links, and clickable elements
+                            clickable_selectors = [
+                                f"{modal_selector} button",
+                                f"{modal_selector} a",
+                                f"{modal_selector} [role='button']",
+                                f"{modal_selector} .btn",
+                                f"{modal_selector} input[type='button']"
+                            ]
+                            
+                            button_info = []
+                            for click_sel in clickable_selectors:
+                                try:
+                                    elements = self.page.locator(click_sel)
+                                    count = await elements.count()
+                                    for i in range(count):
+                                        elem = elements.nth(i)
+                                        if await elem.is_visible():
+                                            text = await elem.inner_text()
+                                            # Also get aria-label if available
+                                            aria_label = await elem.get_attribute("aria-label")
+                                            class_name = await elem.get_attribute("class")
+                                            
+                                            button_info.append({
+                                                "text": text.strip(),
+                                                "aria_label": aria_label,
+                                                "class": class_name,
+                                                "selector": click_sel
+                                            })
+                                except:
+                                    continue
+                            
+                            result["popup_details"]["buttons"] = button_info[:10]  # Limit to 10
                         except:
                             pass
                         
-                        # Get popup content (limited)
+                        # Get popup full content
                         try:
-                            content = modal.inner_text()[:500]  # Limit content length
-                            result["popup_details"]["content_preview"] = content
+                            content = await modal.inner_text()
+                            result["popup_details"]["content_preview"] = content[:1000]
+                        except:
+                            pass
+                        
+                        # Capture popup HTML for better selector generation
+                        try:
+                            popup_html = await modal.inner_html()
+                            result["popup_details"]["html_snippet"] = popup_html[:2000]
                         except:
                             pass
                         
@@ -321,7 +384,7 @@ class PlaywrightAgent:
         return result
 
 
-def execute_actions(url: str, action_plan: List[Dict[str, Any]], headless: bool = True) -> Dict[str, Any]:
+async def execute_actions(url: str, action_plan: List[Dict[str, Any]], headless: bool = True) -> Dict[str, Any]:
     """
     Convenience function to execute action plan.
     
@@ -334,5 +397,5 @@ def execute_actions(url: str, action_plan: List[Dict[str, Any]], headless: bool 
         Execution results dictionary
     """
     agent = PlaywrightAgent(headless=headless)
-    return agent.execute_action_plan(url, action_plan)
+    return await agent.execute_action_plan(url, action_plan)
 
